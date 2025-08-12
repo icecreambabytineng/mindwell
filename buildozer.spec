@@ -450,3 +450,19 @@ warn_on_root = 1
 #    Then, invoke the command line with the "demo" profile:
 #
 #buildozer --profile demo android debug
+
+[android]
+# Путь к Android SDK — там, где в GitHub Actions ты будешь его скачивать (пример для runner)
+android.sdk_path = /home/runner/android-sdk
+android.ndk_path = /home/runner/android-sdk/ndk/23.1.7779620
+android.sdk_api = 31
+android.build_tools_version = 31.0.0
+
+# Минимальная версия API (можно 21)
+android.minapi = 21
+
+# Архитектуры для сборки
+android.archs = arm64-v8a, armeabi-v7a
+
+# Лицензии SDK принимать автоматически
+android.accept_sdk_license = True
