@@ -1,117 +1,419 @@
-name: Build APK
-on: push: branches: - main
-jobs: build: runs-on: ubuntu-22.04
+name: Build Android APK
 
-steps:
-  - name: Checkout code
-    uses: actions/checkout@v4
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**.py'
+      - 'buildozer.spec'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
-  - name: Add universe repository
-    run: sudo add-apt-repository universe
+env:
+  ANDROID_API_LEVEL: "31"
+  ANDROID_BUILD_TOOLS_VERSION: "31.0.0"
+  ANDROID_NDK_VERSION: "23.1.7779620"
 
-  - name: Install system dependencies
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y \
-        python3-pip \
-        python3-dev \
-        python3-setuptools \
-        python3-venv \
-        openjdk-17-jdk-headless \
-        git \
-        unzip \
-        libssl-dev \
-        libffi-dev \
-        build-essential \
-        curl \
-        zlib1g-dev \
-        libncurses-dev \
-        libtinfo6 \
-        cmake \
-        automake \
-        autoconf \
-        libtool \
-        pkg-config \
-        libsdl2-dev \
-        libsdl2-image-dev \
-        libsdl2-mixer-dev \
-        libsdl2-ttf-dev \
-        libportmidi-dev \
-        libswscale-dev \
-        libavformat-dev \
-        libavcodec-dev \
-        libgstreamer1.0-dev \
-        gstreamer1.0-plugins-base \
-        gstreamer1.0-plugins-good \
-        libunwind-dev \
-        libsqlite3-dev \
-        sqlite3 \
-        bzip2 \
-        libbz2-dev \
-        libgdbm-dev \
-        libgdbm-compat-dev \
-        liblzma-dev \
-        libreadline-dev \
-        uuid-dev \
-        ffmpeg
-
-  - name: Setup Java
-    run: |
-      echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-      echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
-
-  - name: Check Java version
-    run: java -version
-
-  - name: Install Python packages
-    run: |
-      python3 -m pip install --upgrade pip setuptools wheel
-      pip3 install --user cython==0.29.33 buildozer
-
-  - name: Cache Buildozer
-    uses: actions/cache@v4
-    with:
-      path: |
-        ~/.buildozer
-        .buildozer
-      key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
-
-  - name: Update buildozer.spec
-    run: |
-      if [ ! -f buildozer.spec ]; then
-        yes | buildozer init
-      fi
-      sed -i '/^\[app\]$/,/^\[/ s/^android\.api = .*/android.api = 33/' buildozer.spec || echo "android.api = 33" >> buildozer.spec
-      sed -i '/^\[app\]$/,/^\[/ s/^requirements = .*/requirements = python3,kivy==2.1.0,cython==0.29.33/' buildozer.spec || echo "requirements = python3,kivy==2.1.0,cython==0.29.33" >> buildozer.spec
-      sed -i '/^\[buildozer\]$/,/^\[/ s/^p4a\.branch = .*/p4a.branch = stable/' buildozer.spec || echo "p4a.branch = stable" >> buildozer.spec
-      sed -i '/^\[buildozer\]$/,/^\[/ s/^log_level = .*/log_level = 2/' buildozer.spec || echo "log_level = 2" >> buildozer.spec
-      sed -i '/^\[buildozer\]$/,/^\[/ s/^android\.ndk = .*/android.ndk = 25b/' buildozer.spec || echo "android.ndk = 25b" >> buildozer.spec
-
-  - name: Download Android SDK Command-line Tools
-    run: |
-      mkdir -p $HOME/android-sdk/cmdline-tools
-      curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
-      unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
-      mkdir -p $HOME/android-sdk/cmdline-tools/latest
-      mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
-
-  - name: Install Android SDK Packages
-    run: |
-      yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
-        "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.1.8937393"
-      yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
-
-  - name: Set environment variables
-    run: |
-      echo "ANDROIDSDK=$HOME/android-sdk" >> $GITHUB_ENV
-      echo "ANDROIDNDK=$HOME/android-sdk/ndk/25.1.8937393" >> $GITHUB_ENV
-      echo "PATH=$HOME/.local/bin:$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/33.0.2:$PATH" >> $GITHUB_ENV
-
-  - name: Build APK with Buildozer
-    run: yes | buildozer -v android debug
-
-  - name: Upload APK artifact
-    uses: actions/upload-artifact@v4
-    with:
-      name: apk-build
-      path: bin/*.apk
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Cache Android SDK and buildozer
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.android/sdk
+          ~/.buildozer
+          .buildozer
+        key: ${{ runner.os }}-android-buildozer-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-android-buildozer-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_NDK_VERSION }}-
+          ${{ runner.os }}-android-buildozer-
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-pip \
+          python3-dev \
+          python3-setuptools \
+          python3-venv \
+          openjdk-11-jdk \
+          git \
+          unzip \
+          zip \
+          libssl-dev \
+          libffi-dev \
+          build-essential \
+          curl \
+          wget \
+          libncurses5 \
+          libncurses5-dev \
+          libncursesw5 \
+          libtinfo5 \
+          cmake \
+          autoconf \
+          autotools-dev \
+          pkg-config \
+          zlib1g-dev \
+          libltdl-dev \
+          libtool \
+          xz-utils \
+          ccache \
+          ninja-build \
+          libgl1-mesa-dev \
+          libgles2-mesa-dev \
+          libegl1-mesa-dev \
+          libx11-dev \
+          libxext-dev \
+          libxrandr-dev \
+          libxinerama-dev \
+          libxcursor-dev \
+          libxi-dev \
+          libxss-dev \
+          libxxf86vm-dev \
+          libxkbcommon-dev
+    
+    - name: Set up Java environment
+      run: |
+        echo "JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> $GITHUB_ENV
+        echo "/usr/lib/jvm/java-11-openjdk-amd64/bin" >> $GITHUB_PATH
+        java -version
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install \
+          buildozer==1.5.0 \
+          cython==0.29.33 \
+          kivy[base]==2.1.0 \
+          kivymd \
+          colorama \
+          appdirs \
+          sh \
+          jinja2 \
+          six
+    
+    - name: Setup Android SDK
+      run: |
+        # Создание директорий
+        mkdir -p $HOME/.android/sdk
+        cd $HOME/.android/sdk
+        
+        # Скачивание Android Command Line Tools (последняя версия)
+        if [ ! -f "commandlinetools-linux-9477386_latest.zip" ]; then
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        fi
+        
+        if [ ! -d "cmdline-tools/latest" ]; then
+          unzip -q commandlinetools-linux-9477386_latest.zip
+          # Создание правильной структуры директорий
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
+          rm -f commandlinetools-linux-9477386_latest.zip
+        fi
+        
+        # Установка переменных окружения
+        echo "ANDROID_HOME=$HOME/.android/sdk" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$HOME/.android/sdk" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$HOME/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
+        echo "$HOME/.android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "$HOME/.android/sdk/platform-tools" >> $GITHUB_PATH
+        echo "$HOME/.android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}" >> $GITHUB_PATH
+    
+    - name: Accept Android SDK licenses
+      run: |
+        export ANDROID_HOME=$HOME/.android/sdk
+        export ANDROID_SDK_ROOT=$HOME/.android/sdk
+        export PATH=$PATH:$HOME/.android/sdk/cmdline-tools/latest/bin
+        
+        # Принятие всех лицензий
+        yes | sdkmanager --licenses || true
+        
+        # Обновление SDK Manager
+        sdkmanager --update || true
+    
+    - name: Install Android SDK components
+      run: |
+        export ANDROID_HOME=$HOME/.android/sdk
+        export ANDROID_SDK_ROOT=$HOME/.android/sdk
+        export PATH=$PATH:$HOME/.android/sdk/cmdline-tools/latest/bin
+        
+        # Установка необходимых компонентов SDK
+        sdkmanager "platform-tools"
+        sdkmanager "platforms;android-${{ env.ANDROID_API_LEVEL }}"
+        sdkmanager "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}"
+        sdkmanager "ndk;${{ env.ANDROID_NDK_VERSION }}"
+        sdkmanager "cmake;3.18.1"
+        
+        # Проверка установленных компонентов
+        echo "=== Installed SDK components ==="
+        sdkmanager --list_installed
+    
+    - name: Create or update buildozer.spec
+      run: |
+        # Создание buildozer.spec если его нет, или обновление существующего
+        if [ ! -f "buildozer.spec" ]; then
+          echo "Creating new buildozer.spec..."
+          buildozer init
+        fi
+        
+        # Обновление конфигурации buildozer.spec
+        cat > buildozer.spec << 'EOF'
+        [app]
+        
+        # (str) Title of your application
+        title = MindWell
+        
+        # (str) Package name
+        package.name = mindwell
+        
+        # (str) Package domain (needed for android/ios packaging)
+        package.domain = org.example
+        
+        # (str) Source code where the main.py live
+        source.dir = .
+        
+        # (list) Source files to include (let empty to include all the files)
+        source.include_exts = py,png,jpg,kv,atlas,ttf,txt,gif,wav,mp3,ogg
+        
+        # (str) Application versioning (method 1)
+        version = 0.1
+        
+        # (list) Application requirements
+        # comma separated e.g. requirements = sqlite3,kivy
+        requirements = python3,kivy==2.1.0,kivymd,pillow,requests,urllib3,certifi,charset-normalizer,idna
+        
+        # (str) Presplash of the application
+        #presplash.filename = %(source.dir)s/data/presplash.png
+        
+        # (str) Icon of the application
+        #icon.filename = %(source.dir)s/data/icon.png
+        
+        # (str) Supported orientation (landscape, sensorLandscape, portrait or all)
+        orientation = portrait
+        
+        # (bool) Indicate if the application should be fullscreen or not
+        fullscreen = 0
+        
+        [buildozer]
+        
+        # (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))
+        log_level = 2
+        
+        # (int) Display warning if buildozer is run as root (0 = False, 1 = True)
+        warn_on_root = 1
+        
+        [app:android]
+        
+        # (int) Target Android API, should be as high as possible.
+        android.api = ${{ env.ANDROID_API_LEVEL }}
+        
+        # (int) Minimum API your APK / AAB will support.
+        android.minapi = 21
+        
+        # (str) Android NDK version to use
+        android.ndk = ${{ env.ANDROID_NDK_VERSION }}
+        
+        # (str) Android SDK version to use
+        android.sdk = ${{ env.ANDROID_API_LEVEL }}
+        
+        # (list) Android application meta-data to set (key=value format)
+        #android.meta_data =
+        
+        # (list) Android library project to add (will be added to AndroidManifest.xml)
+        #android.library_references = @jar/my-android-jar
+        
+        # (str) Android logcat filters to use
+        android.logcat_filters = *:S python:D
+        
+        # (bool) Copy library instead of making a libpymodules.so
+        android.copy_libs = 1
+        
+        # (str) The Android arch to build for, choices: armeabi-v7a, arm64-v8a, x86, x86_64
+        android.archs = arm64-v8a, armeabi-v7a
+        
+        # (bool) enables Android auto backup feature (Android API >=23)
+        android.allow_backup = True
+        
+        # (list) Android permissions
+        android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE
+        
+        # (list) Android add extra java jar files to the libs folder
+        #android.add_jars = foo.jar,bar.jar,path/to/more/*.jar
+        
+        # (list) Gradle dependencies to add
+        android.gradle_dependencies = com.google.android.material:material:1.6.1
+        
+        # (str) python-for-android branch to use, defaults to master
+        p4a.branch = master
+        
+        # (str) OUYA Console category. Should be one of GAME or APP
+        # If you leave this blank, OUYA support will not be enabled
+        #android.ouya.category = GAME
+        
+        # (str) Filename of OUYA Console icon. It must be a 732x412 png image.
+        #android.ouya.icon.filename = %(source.dir)s/data/ouya_icon.png
+        
+        # (str) XML file to include as an intent filter in our main activity
+        #android.manifest.intent_filters =
+        
+        # (list) Copy these files to src/main/res/xml/ (used for example with intent-filters)
+        #android.res_xml = PATH
+        
+        # (str) launchMode to set for the main activity
+        #android.manifest.launch_mode = standard
+        
+        # (str) screenOrientation to set for the main activity.
+        # Valid values can be found at https://developer.android.com/guide/topics/manifest/activity-element
+        #android.manifest.orientation = fullSensor
+        
+        # (list) Android additional libraries to copy into libs/armeabi
+        #android.add_libs_armeabi = libs/android/*.so
+        #android.add_libs_armeabi_v7a = libs/android-v7/*.so
+        #android.add_libs_arm64_v8a = libs/android-v8/*.so
+        #android.add_libs_x86 = libs/android-x86/*.so
+        #android.add_libs_mips = libs/android-mips/*.so
+        
+        # (bool) Indicate whether the screen should stay on
+        # Don't forget to add the WAKE_LOCK permission if you set this to True
+        #android.wakelock = False
+        
+        # (list) Android application meta-data to set (key=value format)
+        #android.meta_data =
+        
+        # (list) Android library project to add (will be added to AndroidManifest.xml)
+        #android.library_references = @jar/my-android-jar
+        
+        # (bool) Indicate whether we should build the apk in debug mode
+        # Don't forget to change this before releasing
+        #android.release_abi = all
+        
+        EOF
+        
+        echo "=== Updated buildozer.spec ==="
+        cat buildozer.spec
+    
+    - name: Verify environment setup
+      run: |
+        export ANDROID_HOME=$HOME/.android/sdk
+        export ANDROID_SDK_ROOT=$HOME/.android/sdk
+        export ANDROID_NDK_HOME=$HOME/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+        export PATH=$PATH:$HOME/.android/sdk/cmdline-tools/latest/bin:$HOME/.android/sdk/platform-tools:$HOME/.android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+        
+        echo "=== Environment Variables ==="
+        echo "JAVA_HOME: $JAVA_HOME"
+        echo "ANDROID_HOME: $ANDROID_HOME"
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+        echo "PATH: $PATH"
+        
+        echo "=== Java Version ==="
+        java -version
+        
+        echo "=== Android SDK Tools ==="
+        which sdkmanager || echo "sdkmanager not found in PATH"
+        which adb || echo "adb not found in PATH"
+        which aapt || echo "aapt not found in PATH"
+        
+        echo "=== Python and Buildozer ==="
+        python --version
+        pip --version
+        buildozer --version
+        
+        echo "=== Project Files ==="
+        ls -la
+        echo "=== Main Python file ==="
+        if [ -f "mindwell.py" ]; then
+          echo "mindwell.py found"
+          head -10 mindwell.py
+        else
+          echo "mindwell.py not found, listing all .py files:"
+          ls -la *.py || echo "No .py files found"
+        fi
+    
+    - name: Initialize Buildozer
+      run: |
+        export ANDROID_HOME=$HOME/.android/sdk
+        export ANDROID_SDK_ROOT=$HOME/.android/sdk
+        export ANDROID_NDK_HOME=$HOME/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+        export PATH=$PATH:$HOME/.android/sdk/cmdline-tools/latest/bin:$HOME/.android/sdk/platform-tools:$HOME/.android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+        
+        echo "=== Buildozer Android Clean ==="
+        buildozer android clean || echo "Clean failed, continuing..."
+        
+        echo "=== Checking buildozer configuration ==="
+        buildozer android update --verbose || echo "Update command failed, this might be expected on first run"
+    
+    - name: Build Android APK
+      run: |
+        export ANDROID_HOME=$HOME/.android/sdk
+        export ANDROID_SDK_ROOT=$HOME/.android/sdk
+        export ANDROID_NDK_HOME=$HOME/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+        export PATH=$PATH:$HOME/.android/sdk/cmdline-tools/latest/bin:$HOME/.android/sdk/platform-tools:$HOME/.android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+        
+        # Увеличиваем лимиты для Java
+        export _JAVA_OPTIONS="-Xmx4096m -Xms1024m"
+        
+        echo "=== Starting APK Build ==="
+        buildozer android debug --verbose
+        
+        echo "=== Build completed ==="
+    
+    - name: Verify APK build
+      run: |
+        echo "=== Searching for APK files ==="
+        find . -name "*.apk" -type f -exec ls -lh {} \;
+        
+        echo "=== Bin directory contents ==="
+        ls -la bin/ || echo "No bin directory found"
+        
+        echo "=== Buildozer directory structure ==="
+        ls -la .buildozer/ || echo "No .buildozer directory found"
+        
+        if [ -d ".buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists" ]; then
+          echo "=== Distribution files ==="
+          find .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists -name "*.apk" -exec ls -lh {} \;
+        fi
+    
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: android-apk-${{ github.run_number }}
+        path: |
+          bin/*.apk
+          .buildozer/android/platform/build-*/dists/*/*.apk
+        retention-days: 30
+        if-no-files-found: warn
+    
+    - name: Upload build logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-logs-${{ github.run_number }}
+        path: |
+          .buildozer/logs/
+          buildozer.log
+        retention-days: 7
+        if-no-files-found: ignore
