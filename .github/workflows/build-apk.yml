@@ -170,6 +170,17 @@ jobs:
         # Проверка установленных компонентов
         echo "=== Installed SDK components ==="
         sdkmanager --list_installed
+        
+        # Проверка наличия AIDL
+        echo "=== Checking AIDL ==="
+        find $ANDROID_HOME -name "aidl" -type f
+        ls -la $ANDROID_HOME/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}/
+        
+        # Создание симлинка для buildozer (если нужно)
+        mkdir -p $HOME/.buildozer/android/platform/android-sdk
+        if [ ! -L "$HOME/.buildozer/android/platform/android-sdk/build-tools" ]; then
+          ln -sf $ANDROID_HOME/build-tools $HOME/.buildozer/android/platform/android-sdk/build-tools
+        fi
     
     - name: Create or update buildozer.spec
       run: |
@@ -238,6 +249,12 @@ jobs:
         
         # (str) Android SDK version to use
         android.sdk = ${{ env.ANDROID_API_LEVEL }}
+        
+        # (str) Android SDK directory (auto-detected from environment)
+        android.sdk_path = /home/runner/.android/sdk
+        
+        # (str) Android NDK directory (auto-detected from environment)  
+        android.ndk_path = /home/runner/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
         
         # (list) Android application meta-data to set (key=value format)
         #android.meta_data =
@@ -359,6 +376,24 @@ jobs:
         export ANDROID_SDK_ROOT=$HOME/.android/sdk
         export ANDROID_NDK_HOME=$HOME/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
         export PATH=$PATH:$HOME/.android/sdk/cmdline-tools/latest/bin:$HOME/.android/sdk/platform-tools:$HOME/.android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+        
+        # Создание необходимых директорий для buildozer
+        mkdir -p $HOME/.buildozer/android/platform/android-sdk
+        mkdir -p $HOME/.buildozer/android/platform/android-ndk
+        
+        # Создание симлинков на SDK и NDK для buildozer
+        if [ ! -L "$HOME/.buildozer/android/platform/android-sdk/platforms" ]; then
+          ln -sf $ANDROID_HOME/platforms $HOME/.buildozer/android/platform/android-sdk/platforms
+        fi
+        if [ ! -L "$HOME/.buildozer/android/platform/android-sdk/build-tools" ]; then
+          ln -sf $ANDROID_HOME/build-tools $HOME/.buildozer/android/platform/android-sdk/build-tools
+        fi
+        if [ ! -L "$HOME/.buildozer/android/platform/android-sdk/platform-tools" ]; then
+          ln -sf $ANDROID_HOME/platform-tools $HOME/.buildozer/android/platform/android-sdk/platform-tools
+        fi
+        if [ ! -L "$HOME/.buildozer/android/platform/android-ndk" ]; then
+          ln -sf $ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }} $HOME/.buildozer/android/platform/android-ndk-r${{ env.ANDROID_NDK_VERSION }}
+        fi
         
         echo "=== Buildozer Android Clean ==="
         buildozer android clean || echo "Clean failed, continuing..."
