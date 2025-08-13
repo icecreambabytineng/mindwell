@@ -1,37 +1,4 @@
-- name: Create build summary
-      if: always()
-      run: |
-        echo "# Build Summary" > build_summary.md
-        echo "" >> build_summary.md
-        echo "## Build Status" >> build_summary.md
-        if find . -name "*.apk" -type f | grep -q .; then
-          echo "✅ APK files found:" >> build_summary.md
-          find . -name "*.apk" -type f -exec echo "- {}" \; >> build_summary.md
-        else
-          echo "❌ No APK files found" >> build_summary.md
-        fi
-        echo "" >> build_summary.md
-        echo "## Build Environment" >> build_summary.md
-        echo "- Java: $(java -version 2>&1 | head -1)" >> build_summary.md
-        echo "- Python: $(python --version)" >> build_summary.md
-        echo "- Buildozer: $(buildozer --version 2>/dev/null || echo 'Version unknown')" >> build_summary.md
-        echo "- Android API: ${{ env.ANDROID_API_LEVEL }}" >> build_summary.md
-        echo "- NDK: ${{ env.ANDROID_NDK_VERSION }}" >> build_summary.md
-        echo "" >> build_summary.md
-        echo "## Directory Structure" >> build_summary.md
-        echo '```' >> build_summary.md
-        ls -la bin/ 2>/dev/null || echo "No bin directory" >> build_summary.md
-        echo '```' >> build_summary.md
-        
-        cat build_summary.md
-    
-    - name: Upload build summary
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-summary-${{ github.run_number }}
-        path: build_summary.md
-        retention-days: 30name: Build Android APK
+name: Build Android APK
 
 on:
   push:
@@ -496,17 +463,6 @@ jobs:
         buildozer android debug --verbose
         
         echo "=== Build completed ==="
-        
-        # Создание директории bin если APK найден где-то еще
-        mkdir -p bin
-        
-        # Поиск и копирование APK файлов в стандартную директорию
-        echo "=== Searching and copying APK files ==="
-        find .buildozer -name "*.apk" -type f -exec cp {} bin/ \; 2>/dev/null || echo "No APK found to copy"
-        
-        # Вывод финальной информации
-        echo "=== Final APK search ==="
-        find . -name "*.apk" -type f -exec ls -lh {} \;
     
     - name: Verify APK build
       run: |
@@ -545,9 +501,8 @@ jobs:
       with:
         name: build-logs-${{ github.run_number }}
         path: |
-          .buildozer/**/*.log
-          .buildozer/**/logs/**/*
-          **/*.log
-          /tmp/buildozer_*.log
+          .buildozer/logs/**/*
+          .buildozer/android/platform/python-for-android/.buildozer_log
+          buildozer.log
         retention-days: 7
         if-no-files-found: ignore
