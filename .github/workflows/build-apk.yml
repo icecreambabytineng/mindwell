@@ -436,19 +436,23 @@ jobs:
     
     - name: Verify APK build
       run: |
-        echo "=== Searching for APK files ==="
+        echo "=== Searching for APK files recursively ==="
         find . -name "*.apk" -type f -exec ls -lh {} \;
         
         echo "=== Bin directory contents ==="
-        ls -la bin/ || echo "No bin directory found"
+        ls -la bin/ 2>/dev/null || echo "No bin directory found"
         
         echo "=== Buildozer directory structure ==="
-        ls -la .buildozer/ || echo "No .buildozer directory found"
+        find .buildozer -name "*.apk" -type f 2>/dev/null || echo "No APK found in .buildozer"
         
-        if [ -d ".buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists" ]; then
-          echo "=== Distribution files ==="
-          find .buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists -name "*.apk" -exec ls -lh {} \;
-        fi
+        echo "=== Python-for-android build output ==="
+        find .buildozer/android/platform/build-* -name "*.apk" -type f 2>/dev/null || echo "No APK in build directory"
+        
+        echo "=== Distribution files ==="
+        find .buildozer/android/platform/build-*/dists -name "*.apk" -type f 2>/dev/null || echo "No APK in dists"
+        
+        echo "=== All directories in .buildozer/android/platform ==="
+        ls -la .buildozer/android/platform/ 2>/dev/null || echo "Platform directory not found"
     
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
@@ -457,6 +461,7 @@ jobs:
         path: |
           bin/*.apk
           .buildozer/android/platform/build-*/dists/*/*.apk
+          .buildozer/android/platform/build-*/build/outputs/apk/**/*.apk
         retention-days: 30
         if-no-files-found: warn
     
@@ -466,7 +471,8 @@ jobs:
       with:
         name: build-logs-${{ github.run_number }}
         path: |
-          .buildozer/logs/
+          .buildozer/logs/**/*
+          .buildozer/android/platform/python-for-android/.buildozer_log
           buildozer.log
         retention-days: 7
         if-no-files-found: ignore
