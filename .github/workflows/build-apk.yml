@@ -7,11 +7,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # Pin to 22.04 to avoid compatibility issues with Buildozer on newer Ubuntu versions
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4  # Update to latest checkout action
+        uses: actions/checkout@v4
+
+      - name: Add universe repository
+        run: sudo add-apt-repository universe
 
       - name: Install system dependencies
         run: |
@@ -21,7 +24,7 @@ jobs:
             python3-dev \
             python3-setuptools \
             python3-venv \
-            openjdk-17-jdk-headless \  # Use JDK 17 for compatibility with modern Android tools
+            openjdk-17-jdk-headless \
             git \
             unzip \
             libssl-dev \
@@ -29,9 +32,8 @@ jobs:
             build-essential \
             curl \
             zlib1g-dev \
-            libncurses5-dev \
-            libncursesw5-dev \
-            libtinfo5 \
+            libncurses-dev \
+            libtinfo6 \
             cmake \
             automake \
             autoconf \
@@ -52,21 +54,30 @@ jobs:
       - name: Install Python packages
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install --user cython==0.29.33  # Specific Cython version for compatibility
-          pip3 install --user buildozer
+          pip3 install --user cython==0.29.33 buildozer
+
+      - name: Update buildozer.spec
+        run: |
+          if [ ! -f buildozer.spec ]; then
+            yes | buildozer init
+          fi
+          sed -i '/^\[app\]$/,/^\[/ s/^android\.api = .*/android.api = 33/' buildozer.spec || echo "android.api = 33" >> buildozer.spec
+          sed -i '/^\[app\]$/,/^\[/ s/^requirements = .*/requirements = python3,kivy==2.1.0,cython==0.29.33/' buildozer.spec || echo "requirements = python3,kivy==2.1.0,cython==0.29.33" >> buildozer.spec
+          sed -i '/^\[buildozer\]$/,/^\[/ s/^p4a\.branch = .*/p4a.branch = stable/' buildozer.spec || echo "p4a.branch = stable" >> buildozer.spec
+          # Добавьте другие необходимые изменения в spec файл здесь, если нужно
 
       - name: Download Android SDK Command-line Tools
         run: |
           mkdir -p $HOME/android-sdk/cmdline-tools
-          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip  # Updated to latest version as of 2024-2025
+          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
           mkdir -p $HOME/android-sdk/cmdline-tools/latest
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
 
-      - name: Install Android SDK Packages (platform-tools, platforms, build-tools, NDK)
+      - name: Install Android SDK Packages
         run: |
           yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
-            "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.2.9519653"  # Updated to newer Android API and tools for 2025 compatibility
+            "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.2.9519653"
 
       - name: Set environment variables
         run: |
@@ -75,7 +86,7 @@ jobs:
           echo "PATH=$HOME/.local/bin:$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/33.0.2:$PATH" >> $GITHUB_ENV
 
       - name: Build APK with Buildozer
-        run: yes | buildozer -v android debug  # Pipe 'yes' to handle any prompts, add -v for verbose output
+        run: yes | buildozer -v android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
