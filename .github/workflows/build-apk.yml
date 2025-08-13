@@ -1,4 +1,37 @@
-name: Build Android APK
+- name: Create build summary
+      if: always()
+      run: |
+        echo "# Build Summary" > build_summary.md
+        echo "" >> build_summary.md
+        echo "## Build Status" >> build_summary.md
+        if find . -name "*.apk" -type f | grep -q .; then
+          echo "✅ APK files found:" >> build_summary.md
+          find . -name "*.apk" -type f -exec echo "- {}" \; >> build_summary.md
+        else
+          echo "❌ No APK files found" >> build_summary.md
+        fi
+        echo "" >> build_summary.md
+        echo "## Build Environment" >> build_summary.md
+        echo "- Java: $(java -version 2>&1 | head -1)" >> build_summary.md
+        echo "- Python: $(python --version)" >> build_summary.md
+        echo "- Buildozer: $(buildozer --version 2>/dev/null || echo 'Version unknown')" >> build_summary.md
+        echo "- Android API: ${{ env.ANDROID_API_LEVEL }}" >> build_summary.md
+        echo "- NDK: ${{ env.ANDROID_NDK_VERSION }}" >> build_summary.md
+        echo "" >> build_summary.md
+        echo "## Directory Structure" >> build_summary.md
+        echo '```' >> build_summary.md
+        ls -la bin/ 2>/dev/null || echo "No bin directory" >> build_summary.md
+        echo '```' >> build_summary.md
+        
+        cat build_summary.md
+    
+    - name: Upload build summary
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-summary-${{ github.run_number }}
+        path: build_summary.md
+        retention-days: 30name: Build Android APK
 
 on:
   push:
@@ -15,7 +48,7 @@ on:
 env:
   ANDROID_API_LEVEL: "31"
   ANDROID_BUILD_TOOLS_VERSION: "31.0.0"
-  ANDROID_NDK_VERSION: "23.1.7779620"
+  ANDROID_NDK_VERSION: "25.2.9519653"
 
 jobs:
   build:
@@ -167,6 +200,9 @@ jobs:
         sdkmanager "ndk;${{ env.ANDROID_NDK_VERSION }}"
         sdkmanager "cmake;3.18.1"
         
+        # Установка дополнительных версий NDK для совместимости
+        sdkmanager "ndk;23.1.7779620" || echo "NDK 23.1.7779620 installation failed, continuing..."
+        
         # Проверка установленных компонентов
         echo "=== Installed SDK components ==="
         sdkmanager --list_installed
@@ -175,6 +211,10 @@ jobs:
         echo "=== Checking AIDL ==="
         find $ANDROID_HOME -name "aidl" -type f
         ls -la $ANDROID_HOME/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}/
+        
+        # Проверка NDK версий
+        echo "=== Available NDK versions ==="
+        ls -la $ANDROID_HOME/ndk/ || echo "No NDK directory found"
         
         # Создание симлинка для buildozer (если нужно)
         mkdir -p $HOME/.buildozer/android/platform/android-sdk
@@ -285,6 +325,19 @@ jobs:
         
         # (str) python-for-android branch to use, defaults to master
         p4a.branch = master
+        
+        # (str) python-for-android fork to use in case if you have a fork
+        p4a.fork = kivy
+        
+        # (str) python-for-android url, uses the default repo from Github
+        # p4a.url = 
+        
+        # (str) Name of the certificate to use for signing the debug version
+        # Get a list of available identities: buildozer android list_identities
+        # android.identity =
+        
+        # (bool) Use --private data storage (True) or --dir public storage (False)
+        #android.private_storage = True
         
         # (str) OUYA Console category. Should be one of GAME or APP
         # If you leave this blank, OUYA support will not be enabled
@@ -429,10 +482,31 @@ jobs:
         # Увеличиваем лимиты для Java
         export _JAVA_OPTIONS="-Xmx4096m -Xms1024m"
         
-        echo "=== Starting APK Build ==="
+        # Принудительное использование правильного NDK
+        export ANDROIDNDK=$HOME/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+        export NDK_HOME=$HOME/.android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+        
+        echo "=== Environment Check Before Build ==="
+        echo "ANDROID_HOME: $ANDROID_HOME"
+        echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+        echo "ANDROIDNDK: $ANDROIDNDK"
+        ls -la $ANDROID_NDK_HOME || echo "NDK directory not found"
+        
+        echo "=== Starting APK Build with verbose logging ==="
         buildozer android debug --verbose
         
         echo "=== Build completed ==="
+        
+        # Создание директории bin если APK найден где-то еще
+        mkdir -p bin
+        
+        # Поиск и копирование APK файлов в стандартную директорию
+        echo "=== Searching and copying APK files ==="
+        find .buildozer -name "*.apk" -type f -exec cp {} bin/ \; 2>/dev/null || echo "No APK found to copy"
+        
+        # Вывод финальной информации
+        echo "=== Final APK search ==="
+        find . -name "*.apk" -type f -exec ls -lh {} \;
     
     - name: Verify APK build
       run: |
@@ -471,8 +545,9 @@ jobs:
       with:
         name: build-logs-${{ github.run_number }}
         path: |
-          .buildozer/logs/**/*
-          .buildozer/android/platform/python-for-android/.buildozer_log
-          buildozer.log
+          .buildozer/**/*.log
+          .buildozer/**/logs/**/*
+          **/*.log
+          /tmp/buildozer_*.log
         retention-days: 7
         if-no-files-found: ignore
