@@ -7,50 +7,78 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # Pin to 22.04 to avoid compatibility issues with Buildozer on newer Ubuntu versions
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Update to latest checkout action
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             python3-pip \
-            openjdk-11-jdk \
+            python3-dev \
+            python3-setuptools \
+            python3-venv \
+            openjdk-17-jdk-headless \  # Use JDK 17 for compatibility with modern Android tools
             git \
             unzip \
             libssl-dev \
             libffi-dev \
             build-essential \
-            curl
+            curl \
+            zlib1g-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libtinfo5 \
+            cmake \
+            automake \
+            autoconf \
+            libtool \
+            pkg-config \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libportmidi-dev \
+            libswscale-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            libgstreamer1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good
 
       - name: Install Python packages
         run: |
           python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install cython
-          pip3 install buildozer
+          pip3 install --user cython==0.29.33  # Specific Cython version for compatibility
+          pip3 install --user buildozer
 
       - name: Download Android SDK Command-line Tools
         run: |
           mkdir -p $HOME/android-sdk/cmdline-tools
-          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip  # Updated to latest version as of 2024-2025
           unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
           mkdir -p $HOME/android-sdk/cmdline-tools/latest
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
-          rm sdk-tools.zip
 
-      - name: Install Android SDK Packages and Accept Licenses
+      - name: Install Android SDK Packages (platform-tools, platforms, build-tools, NDK)
         run: |
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk --licenses
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
-            "platform-tools" "platforms;android-31" "build-tools;31.0.0" "ndk;23.1.7779620"
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
+            "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.2.9519653"  # Updated to newer Android API and tools for 2025 compatibility
+
+      - name: Set environment variables
+        run: |
+          echo "ANDROIDSDK=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "ANDROIDNDK=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "PATH=$HOME/.local/bin:$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/33.0.2:$PATH" >> $GITHUB_ENV
 
       - name: Build APK with Buildozer
-        env:
-          ANDROIDSDK: ${{ env.HOME }}/android-sdk
-          ANDROIDNDK: ${{ env.HOME }}/android-sdk/ndk/23.1.7779620
-          PATH: ${{ env.HOME }}/android-sdk/cmdline-tools/latest/bin:${{ env.HOME }}/android-sdk/platform-tools:${{ env.HOME }}/android-sdk/build-tools/31.0.0:$PATH
-        run: |
-          buildozer android debug
+        run: yes | buildozer -v android debug  # Pipe 'yes' to handle any prompts, add -v for verbose output
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-build
+          path: bin/*.apk
