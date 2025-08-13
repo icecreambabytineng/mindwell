@@ -39,17 +39,18 @@ jobs:
           unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
           mkdir -p $HOME/android-sdk/cmdline-tools/latest
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
+          rm sdk-tools.zip
 
-      - name: Install Android SDK Packages (platform-tools, platforms, build-tools, NDK)
+      - name: Install Android SDK Packages and Accept Licenses
         run: |
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk --licenses
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
             "platform-tools" "platforms;android-31" "build-tools;31.0.0" "ndk;23.1.7779620"
 
-      - name: Set environment variables
-        run: |
-          echo "ANDROIDSDK=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROIDNDK=$HOME/android-sdk/ndk/23.1.7779620" >> $GITHUB_ENV
-          echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
-
       - name: Build APK with Buildozer
-        run: buildozer android debug
+        env:
+          ANDROIDSDK: ${{ env.HOME }}/android-sdk
+          ANDROIDNDK: ${{ env.HOME }}/android-sdk/ndk/23.1.7779620
+          PATH: ${{ env.HOME }}/android-sdk/cmdline-tools/latest/bin:${{ env.HOME }}/android-sdk/platform-tools:${{ env.HOME }}/android-sdk/build-tools/31.0.0:$PATH
+        run: |
+          buildozer android debug
