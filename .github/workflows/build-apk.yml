@@ -1,104 +1,117 @@
 name: Build APK
+on: push: branches: - main
+jobs: build: runs-on: ubuntu-22.04
 
-on:
-  push:
-    branches:
-      - main
+steps:
+  - name: Checkout code
+    uses: actions/checkout@v4
 
-jobs:
-  build:
-    runs-on: ubuntu-22.04
+  - name: Add universe repository
+    run: sudo add-apt-repository universe
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  - name: Install system dependencies
+    run: |
+      sudo apt-get update
+      sudo apt-get install -y \
+        python3-pip \
+        python3-dev \
+        python3-setuptools \
+        python3-venv \
+        openjdk-17-jdk-headless \
+        git \
+        unzip \
+        libssl-dev \
+        libffi-dev \
+        build-essential \
+        curl \
+        zlib1g-dev \
+        libncurses-dev \
+        libtinfo6 \
+        cmake \
+        automake \
+        autoconf \
+        libtool \
+        pkg-config \
+        libsdl2-dev \
+        libsdl2-image-dev \
+        libsdl2-mixer-dev \
+        libsdl2-ttf-dev \
+        libportmidi-dev \
+        libswscale-dev \
+        libavformat-dev \
+        libavcodec-dev \
+        libgstreamer1.0-dev \
+        gstreamer1.0-plugins-base \
+        gstreamer1.0-plugins-good \
+        libunwind-dev \
+        libsqlite3-dev \
+        sqlite3 \
+        bzip2 \
+        libbz2-dev \
+        libgdbm-dev \
+        libgdbm-compat-dev \
+        liblzma-dev \
+        libreadline-dev \
+        uuid-dev \
+        ffmpeg
 
-      - name: Add universe repository
-        run: sudo add-apt-repository universe
+  - name: Setup Java
+    run: |
+      echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+      echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-pip \
-            python3-dev \
-            python3-setuptools \
-            python3-venv \
-            openjdk-17-jdk-headless \
-            git \
-            unzip \
-            libssl-dev \
-            libffi-dev \
-            build-essential \
-            curl \
-            zlib1g-dev \
-            libncurses-dev \
-            libtinfo6 \
-            cmake \
-            automake \
-            autoconf \
-            libtool \
-            pkg-config \
-            libsdl2-dev \
-            libsdl2-image-dev \
-            libsdl2-mixer-dev \
-            libsdl2-ttf-dev \
-            libportmidi-dev \
-            libswscale-dev \
-            libavformat-dev \
-            libavcodec-dev \
-            libgstreamer1.0-dev \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            libunwind-dev
+  - name: Check Java version
+    run: java -version
 
-      - name: Setup Java
-        run: |
-          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-          echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+  - name: Install Python packages
+    run: |
+      python3 -m pip install --upgrade pip setuptools wheel
+      pip3 install --user cython==0.29.33 buildozer
 
-      - name: Check Java version  # Отладка: проверка версии Java
-        run: java -version
+  - name: Cache Buildozer
+    uses: actions/cache@v4
+    with:
+      path: |
+        ~/.buildozer
+        .buildozer
+      key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
-      - name: Install Python packages
-        run: |
-          python3 -m pip install --upgrade pip setuptools wheel
-          pip3 install --user cython==0.29.33 buildozer
+  - name: Update buildozer.spec
+    run: |
+      if [ ! -f buildozer.spec ]; then
+        yes | buildozer init
+      fi
+      sed -i '/^\[app\]$/,/^\[/ s/^android\.api = .*/android.api = 33/' buildozer.spec || echo "android.api = 33" >> buildozer.spec
+      sed -i '/^\[app\]$/,/^\[/ s/^requirements = .*/requirements = python3,kivy==2.1.0,cython==0.29.33/' buildozer.spec || echo "requirements = python3,kivy==2.1.0,cython==0.29.33" >> buildozer.spec
+      sed -i '/^\[buildozer\]$/,/^\[/ s/^p4a\.branch = .*/p4a.branch = stable/' buildozer.spec || echo "p4a.branch = stable" >> buildozer.spec
+      sed -i '/^\[buildozer\]$/,/^\[/ s/^log_level = .*/log_level = 2/' buildozer.spec || echo "log_level = 2" >> buildozer.spec
+      sed -i '/^\[buildozer\]$/,/^\[/ s/^android\.ndk = .*/android.ndk = 25b/' buildozer.spec || echo "android.ndk = 25b" >> buildozer.spec
 
-      - name: Update buildozer.spec
-        run: |
-          if [ ! -f buildozer.spec ]; then
-            yes | buildozer init
-          fi
-          sed -i '/^\[app\]$/,/^\[/ s/^android\.api = .*/android.api = 33/' buildozer.spec || echo "android.api = 33" >> buildozer.spec
-          sed -i '/^\[app\]$/,/^\[/ s/^requirements = .*/requirements = python3,kivy==2.1.0,cython==0.29.33/' buildozer.spec || echo "requirements = python3,kivy==2.1.0,cython==0.29.33" >> buildozer.spec
-          sed -i '/^\[buildozer\]$/,/^\[/ s/^p4a\.branch = .*/p4a.branch = stable/' buildozer.spec || echo "p4a.branch = stable" >> buildozer.spec
-          # Добавьте другие необходимые изменения в spec файл здесь, если нужно
+  - name: Download Android SDK Command-line Tools
+    run: |
+      mkdir -p $HOME/android-sdk/cmdline-tools
+      curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+      unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
+      mkdir -p $HOME/android-sdk/cmdline-tools/latest
+      mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
 
-      - name: Download Android SDK Command-line Tools
-        run: |
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip  # Обновлено до последней версии
-          unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
-          mkdir -p $HOME/android-sdk/cmdline-tools/latest
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
+  - name: Install Android SDK Packages
+    run: |
+      yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
+        "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.1.8937393"
+      yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
 
-      - name: Install Android SDK Packages
-        run: |
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk \
-            "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.2.9519653"
+  - name: Set environment variables
+    run: |
+      echo "ANDROIDSDK=$HOME/android-sdk" >> $GITHUB_ENV
+      echo "ANDROIDNDK=$HOME/android-sdk/ndk/25.1.8937393" >> $GITHUB_ENV
+      echo "PATH=$HOME/.local/bin:$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/33.0.2:$PATH" >> $GITHUB_ENV
 
-      - name: Set environment variables
-        run: |
-          echo "ANDROIDSDK=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROIDNDK=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "PATH=$HOME/.local/bin:$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/33.0.2:$PATH" >> $GITHUB_ENV
+  - name: Build APK with Buildozer
+    run: yes | buildozer -v android debug
 
-      - name: Build APK with Buildozer
-        run: yes | buildozer -v android debug
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk-build
-          path: bin/*.apk
+  - name: Upload APK artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: apk-build
+      path: bin/*.apk
