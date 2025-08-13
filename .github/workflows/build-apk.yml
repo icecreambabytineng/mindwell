@@ -50,7 +50,15 @@ jobs:
             libgstreamer1.0-dev \
             gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good \
-            libunwind-dev  # Добавлено для разрешения зависимости libgstreamer1.0-dev
+            libunwind-dev
+
+      - name: Setup Java
+        run: |
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+          echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Check Java version  # Отладка: проверка версии Java
+        run: java -version
 
       - name: Install Python packages
         run: |
@@ -70,7 +78,7 @@ jobs:
       - name: Download Android SDK Command-line Tools
         run: |
           mkdir -p $HOME/android-sdk/cmdline-tools
-          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip  # Обновлено до последней версии
           unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
           mkdir -p $HOME/android-sdk/cmdline-tools/latest
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools/* $HOME/android-sdk/cmdline-tools/latest/
